@@ -64,14 +64,14 @@ Here is an example using the `YCrCb` color space and HOG parameters of `orientat
 
 I tried various combinations of parameters. First I experimented with the different color spaces (RGB, HSV, LUV, HLS, YUV, YCrCb) and found that YCrCb gave me the best results. Next I tried to determine which (or all) of the features gave me the best result and it turned out that the combination of all of them was the best - get features for the different channels and concatenate them together. 
 
-For HOG orientations, I wanted to capture gradients better so I tried to go down to 20 degree bins (18 bins out of 360 degrees). This increased the number of features but also resulted in a lot more false positives. In the end I used 9 orientations. Similarly I experimented with number of pixels in the cell (16x16) but that again created too many false positives.  Final pixels_per_cell was 8x8.
+For HOG orientations, I wanted to capture gradients better so I tried to go down to 20 degree bins (18 bins out of 360 degrees). This increased the number of features but also resulted in a lot more false positives. In the end I used 9 orientations. Similarly I experimented with number of pixels in the cell and at 16x16 it gave me decent results while keeping the feature vector size low.
 
 The upside of using only 9 orientations (40 degrees) was that the feature vector stayed relatively small and therefore was faster to train.
 
 
 ### 3. Describe how (and identify where in your code) you trained a classifier using your selected HOG features (and color features if you used them).
 
-The code for this step is contained in the 2nd code cell of the IPython notebook.  My choice of classifier was a linear SVM. But before I trained the classifier I first randomized the samples. Used a training and test split of 80-20. Before I fed the features to the classifier, I normalized the feature vector. I used the same scaler for both training and inference time. 
+The code for this step is contained in the 2nd code cell of the IPython notebook.  My choice of classifier was a mltilayer perceptron (MLP). But before I trained the classifier I first randomized the samples. Used a training and test split of 80-20. Before I fed the features to the classifier, I normalized the feature vector. I used the same scaler for both training and inference time. 
 
 ## Sliding Window Search
 
@@ -98,13 +98,16 @@ Here's a [link to my video result](./output_video.mp4)
 
 ### 2. Describe how (and identify where in your code) you implemented some kind of filter for false positives and some method for combining overlapping bounding boxes.
 
-The code for this step is contained in the 1st and 1st code cell of the IPython notebook. The `draw_boxes` function implements a running heatmap. Every detected car window adds heat to the heatmap. Overlapping window regions therefore get higher probability of car presence. There is thresholding implemneted as well which removes one-off false positives.
+The code for this step is contained in the 1st and 1st code cell of the IPython notebook. The `draw_boxes` function implements a running heatmap. Every detected car window adds heat to the heatmap. Overlapping window regions therefore get higher probability of car presence. There is thresholding implemneted as well which removes false positives.
 
-If only heat map accumulation is done, then moving cars will leave a trail of heat behind them which will stay. In order to avoid this, we need to add a 'cooling' step to the heat map.  This is done by the following code:
+To remove false positive, I used a deque to maintain the latest 10 heatmap readings. Then I summed up the heatmaps to get the liklihood of car presence in the last 10 frames. By thresholding (at 4) i ensure that the false positives are removed.  The number 4 seems high but given the fact that my classifier was giving multiple windows on the cars, it works out pretty well.
 
 ```python
-# remove some heat from whole heat map
-heat[heat > 0] *= 0.65
+heat = np.zeros_like(img[:,:,0]).astype(np.float)
+heatmap = add_heat(heat, bboxes)
+heatmaps.append(heatmap)
+combined = sum(heatmaps)
+heatmap = apply_threshold(combined, 4)
 ```
 
 Once I have a heatmap that represents the running position of the cars, I used `scipy.ndimage.measurements.label()` to identify individual blobs in the heatmap.  I then assumed each blob corresponded to a vehicle.  I constructed bounding boxes to cover the area of each blob detected.  
